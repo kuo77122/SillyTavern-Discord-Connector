@@ -92,3 +92,22 @@ test("global FIFO continues after rejection and preserves interleaving order", a
     "chan1:recovered",
   ]);
 });
+
+test("global FIFO waits for asynchronous generation completion", async () => {
+  const queue = createChatInteractionQueue();
+  const order = [];
+  const first = queue.enqueue(
+    () =>
+      new Promise((resolve) => {
+        order.push("generation:start");
+        setTimeout(() => {
+          order.push("generation:done");
+          resolve();
+        }, 5);
+      }),
+  );
+  const second = queue.enqueue(async () => order.push("next:start"));
+
+  await Promise.all([first, second]);
+  assert.deepEqual(order, ["generation:start", "generation:done", "next:start"]);
+});

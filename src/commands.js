@@ -777,12 +777,13 @@ export async function handleExecuteCommand(data) {
         });
 
         // Queue and return early - generate_image_result/error sends its own packets.
-        enqueueAndGenerateImage(
+        const imageGeneration = enqueueAndGenerateImage(
           data.chatId,
           requestId,
           prompt,
           data.userLocale || null,
         );
+        if (data.binding) await imageGeneration;
         return;
       }
 
