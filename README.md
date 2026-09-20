@@ -92,6 +92,30 @@ allowedUserIds: [], // add your Discord User ID here to keep the bot private to 
 allowedChannelIds: [], // (optional) restrict the bot to specific channels only
 ```
 
+To isolate multiple Discord channels into fixed SillyTavern solo chats, add a
+`discordChannelBindings` map keyed by channel ID. Each entry must contain one
+SillyTavern `characterId` and `chatName` (the chat filename, with or without
+`.jsonl`):
+
+```javascript
+discordChannelBindings: {
+  "123456789012345678": {
+    characterId: "character-file-id",
+    chatName: "Alice - 2026-09-20@12h00m00s000ms",
+  },
+  "234567890123456789": {
+    characterId: "character-file-id",
+    chatName: "Alice - 2026-09-21@12h00m00s000ms",
+  },
+}
+```
+
+The bridge validates this map at startup, rejects duplicate character/chat
+targets, and fails closed for unlisted channels or renamed/missing targets.
+Restart the bridge after changing bindings. Fixed routes reject commands that
+would switch character, chat, or group; `/delete` and `/swipe` stay on the
+source channel's binding.
+
 You can change the other lines in the `config.js` as well, but the ones listed above are the important ones.
 
 > [!TIP]

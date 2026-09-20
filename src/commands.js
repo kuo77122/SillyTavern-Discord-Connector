@@ -777,12 +777,13 @@ export async function handleExecuteCommand(data) {
         });
 
         // Queue and return early - generate_image_result/error sends its own packets.
-        enqueueAndGenerateImage(
+        const imageGeneration = enqueueAndGenerateImage(
           data.chatId,
           requestId,
           prompt,
           data.userLocale || null,
         );
+        if (data.binding) await imageGeneration;
         return;
       }
 
@@ -792,7 +793,7 @@ export async function handleExecuteCommand(data) {
         // separate replyText would duplicate or race against that output.
         // Guard against synchronous throws (e.g. ST already generating).
         try {
-          executeSlashCommandsWithOptions('/continue').catch(() => {});
+          await executeSlashCommandsWithOptions('/continue');
         } catch (_) {}
         break;
       }

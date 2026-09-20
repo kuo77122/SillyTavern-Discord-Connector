@@ -48,6 +48,11 @@ const {
   setLangForUser,
 } = require('./lang-map');
 const { AVAILABLE_LANGUAGES, findLanguage } = require('./locales-manifest');
+const {
+  resolveDiscordBinding,
+  boundConversationId,
+  attachBinding,
+} = require('./discord-routing');
 
 const version = require('./package.json').version;
 const width = 70;
@@ -93,8 +98,10 @@ function sendToSillyTavern(payload) {
   sillyTavernClient.send(JSON.stringify(payload));
 }
 
-function dispatchCommand(platform, chatId, command, args, userId) {
-  const conversationId = resolveConversationId(platform, chatId);
+function dispatchCommand(platform, chatId, command, args, userId, binding) {
+  const conversationId = binding
+    ? boundConversationId(chatId)
+    : resolveConversationId(platform, chatId);
   addRoute(conversationId, platform, chatId);
   const userLocale = getLangForUser(platform, userId) || null;
 
@@ -111,7 +118,7 @@ function dispatchCommand(platform, chatId, command, args, userId) {
     return;
   }
 
-  sendToSillyTavern({
+  sendToSillyTavern(attachBinding({
     type: 'execute_command',
     command,
     args,
@@ -119,7 +126,7 @@ function dispatchCommand(platform, chatId, command, args, userId) {
     userId,
     platform,
     ...(userLocale ? { userLocale } : {}),
-  });
+  }, binding));
 }
 
 async function handleOfflineCommand(
@@ -192,11 +199,18 @@ async function handleOfflineCommand(
 
 const pluginLoader = createPluginLoader({
   onUserMessage(platform, chatId, text, userId = '') {
-    const conversationId = resolveConversationId(platform, chatId);
+    const route =
+      platform === 'discord'
+        ? resolveDiscordBinding(config, chatId)
+        : { binding: null, error: null };
+    if (route.error) return;
+    const conversationId = route.binding
+      ? boundConversationId(chatId)
+      : resolveConversationId(platform, chatId);
     addRoute(conversationId, platform, chatId);
     const mappedPersona = getPersonaForUser(platform, userId);
     const userLocale = getLangForUser(platform, userId) || null;
-    sendToSillyTavern({
+    sendToSillyTavern(attachBinding({
       type: 'user_message',
       text,
       chatId: conversationId,
@@ -204,11 +218,11 @@ const pluginLoader = createPluginLoader({
       platform,
       ...(mappedPersona ? { mappedPersona } : {}),
       ...(userLocale ? { userLocale } : {}),
-    });
+    }, route.binding));
 
     // Cross-relay the user's message to all other platforms in the same
     // conversation so every connected client stays in sync.
-    if (!isCrossRelayEnabled()) return;
+    if (!isCrossRelayEnabled() || route.binding) return;
     const originKey = `${platform}:${chatId}`;
     const senderLabel =
       mappedPersona || getDefaultPersonaName() || `[${platform}]`;
@@ -225,7 +239,12 @@ const pluginLoader = createPluginLoader({
     }
   },
   onCommand(platform, chatId, command, args, userId = '') {
-    dispatchCommand(platform, chatId, command, args, userId);
+    const route =
+      platform === 'discord'
+        ? resolveDiscordBinding(config, chatId)
+        : { binding: null, error: null };
+    if (route.error) return;
+    dispatchCommand(platform, chatId, command, args, userId, route.binding);
   },
 });
 

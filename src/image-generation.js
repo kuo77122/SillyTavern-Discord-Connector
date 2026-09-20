@@ -231,6 +231,7 @@ function enqueueImageGeneration(chatId, fn) {
   next.finally(() => {
     if (imageQueues.get(chatId) === next) imageQueues.delete(chatId);
   });
+  return next;
 }
 
 /**
@@ -381,7 +382,7 @@ async function generateAndSendImage(chatId, requestId, prompt, userLocale) {
  */
 export function enqueueAndGenerateImage(chatId, requestId, prompt, userLocale) {
   imageMetrics.totalRequests += 1;
-  enqueueImageGeneration(chatId, async () => {
+  return enqueueImageGeneration(chatId, async () => {
     imageMetrics.inFlight += 1;
     imageMetrics.maxConcurrentInFlight = Math.max(
       imageMetrics.maxConcurrentInFlight,

@@ -40,6 +40,50 @@ function createConfig(rawConfig) {
   config.imagePlaceholderTimeoutMs =
     config.imagePlaceholderTimeoutSeconds * 1_000;
 
+  if (config.discordChannelBindings !== undefined) {
+    if (
+      typeof config.discordChannelBindings !== "object" ||
+      config.discordChannelBindings === null ||
+      Array.isArray(config.discordChannelBindings)
+    ) {
+      throw new Error(
+        "config.discordChannelBindings must be an object keyed by Discord channel ID.",
+      );
+    }
+
+    const targets = new Set();
+    for (const [channelId, binding] of Object.entries(
+      config.discordChannelBindings,
+    )) {
+      if (!/^\d+$/.test(channelId)) {
+        throw new Error(
+          `config.discordChannelBindings.${channelId} must use a Discord channel ID.`,
+        );
+      }
+      if (
+        typeof binding !== "object" ||
+        binding === null ||
+        Array.isArray(binding) ||
+        typeof binding.characterId !== "string" ||
+        binding.characterId.trim() === "" ||
+        typeof binding.chatName !== "string" ||
+        binding.chatName.trim() === ""
+      ) {
+        throw new Error(
+          `config.discordChannelBindings.${channelId} must contain non-empty characterId and chatName strings.`,
+        );
+      }
+
+      const target = `${binding.characterId}\u0000${binding.chatName.replace(/\.jsonl$/, "")}`;
+      if (targets.has(target)) {
+        throw new Error(
+          `config.discordChannelBindings contains a duplicate character/chat target for ${binding.characterId}/${binding.chatName}.`,
+        );
+      }
+      targets.add(target);
+    }
+  }
+
   if (
     !Number.isInteger(config.wssPort) ||
     config.wssPort < 1 ||
