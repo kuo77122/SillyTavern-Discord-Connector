@@ -37,6 +37,17 @@ module.exports = {
   // right-click a channel and select "Copy Channel ID".
   allowedChannelIds: [], // e.g. ["123456789012345678"]
 
+  // Optional fixed Discord-to-SillyTavern solo chat bindings. When this map is
+  // present, every Discord channel must be listed here or it receives an error
+  // without generating. Use the SillyTavern character id and chat filename
+  // without the .jsonl suffix. Restart the bridge after changing this map.
+  // discordChannelBindings: {
+  //   "123456789012345678": {
+  //     characterId: "character-file-id",
+  //     chatName: "Alice - 2026-09-20@12h00m00s000ms",
+  //   },
+  // },
+
   // =========================================================================
   // GENERAL SETTINGS - safe to leave as-is, but worth a look
   // =========================================================================

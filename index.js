@@ -82,6 +82,16 @@ import {
   handleExecuteCommand,
   handleGetAutocomplete,
 } from "./src/commands.js";
+import {
+  getPastCharacterChats,
+  selectCharacterById,
+  openCharacterChat,
+} from "../../../../../script.js";
+import {
+  activateBoundChat,
+  createChatInteractionQueue,
+  isFixedRouteEscapeCommand,
+} from "./src/chat-routing.mjs";
 
 // ---------------------------------------------------------------------------
 // Connection state (WebSocket lifecycle only - all other state is in src/)
@@ -90,6 +100,41 @@ import {
 let shouldReconnect = true;
 let reconnectTimeout = null;
 let heartbeatInterval = null;
+const chatInteractionQueue = createChatInteractionQueue();
+
+async function handleChatPacket(data, handler) {
+  if (!data.binding) return handler(data);
+
+  return chatInteractionQueue.enqueue(async () => {
+    if (
+      data.type === "execute_command" &&
+      isFixedRouteEscapeCommand(data.command)
+    ) {
+      safeSend({
+        type: "error_message",
+        chatId: data.chatId,
+        text: `/${data.command} is not available for a fixed Discord chat route.`,
+      });
+      return;
+    }
+
+    try {
+      await activateBoundChat(data.binding, {
+        context: SillyTavern.getContext(),
+        getPastCharacterChats,
+        selectCharacterById,
+        openCharacterChat,
+      });
+      await handler(data);
+    } catch (error) {
+      safeSend({
+        type: "error_message",
+        chatId: data.chatId,
+        text: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // WebSocket connection
@@ -202,7 +247,7 @@ function connect() {
 
       if (data.type === "user_message") {
         $(document).trigger("smart_memory:dismiss_recap");
-        await handleUserMessage(data);
+        await handleChatPacket(data, handleUserMessage);
         return;
       }
 
@@ -218,7 +263,7 @@ function connect() {
       }
 
       if (data.type === "execute_command") {
-        await handleExecuteCommand(data);
+        await handleChatPacket(data, handleExecuteCommand);
         return;
       }
     } catch (error) {

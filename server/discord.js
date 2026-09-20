@@ -58,6 +58,10 @@ const {
 } = require('./persona-map');
 const { getLangForUser } = require('./lang-map');
 const { AVAILABLE_LANGUAGES, LANGUAGE_NAMES } = require('./locales-manifest');
+const {
+  resolveDiscordBinding,
+  boundConversationId,
+} = require('./discord-routing');
 const version = require('./package.json').version;
 
 const DISCORD_PLUGIN_ENABLED = (config.enabledPlugins || ['discord']).includes(
@@ -89,14 +93,19 @@ function getSillyTavernClient() {
   return require('./websocket').getSillyTavernClient();
 }
 
-function dispatchCommand(platform, chatId, command, args, userId) {
+function dispatchCommand(platform, chatId, command, args, userId, binding) {
   require('./websocket').dispatchCommand(
     platform,
     chatId,
     command,
     args,
     userId,
+    binding,
   );
+}
+
+function getChannelBinding(channelId) {
+  return resolveDiscordBinding(config, channelId);
 }
 
 // ---------------------------------------------------------------------------
@@ -635,12 +644,21 @@ if (DISCORD_PLUGIN_ENABLED) {
         ? [String(Math.min(1, parseInt(args[0]) || 1))]
         : args;
 
+    const channelBinding = getChannelBinding(interaction.channelId);
+    if (channelBinding.error) {
+      await interaction
+        .reply({ content: channelBinding.error, flags: [MessageFlags.Ephemeral] })
+        .catch(() => {});
+      return;
+    }
+
     dispatchCommand(
       'discord',
       interaction.channelId,
       command,
       cappedArgs,
       interaction.user.id,
+      channelBinding.binding,
     );
 
     // Acknowledge immediately (ephemeral) to satisfy Discord's 3-second window.
@@ -672,7 +690,18 @@ if (DISCORD_PLUGIN_ENABLED) {
     if (!history.length) channelMessageHistory.delete(channelId);
     recentRoleplayMessages.delete(message.id);
     // Only dispatch to ST when the deleted message was the most recent one.
-    if (isNewest) dispatchCommand('discord', channelId, 'delete', ['1'], null);
+    if (isNewest) {
+      const channelBinding = getChannelBinding(channelId);
+      if (!channelBinding.error)
+        dispatchCommand(
+          'discord',
+          channelId,
+          'delete',
+          ['1'],
+          null,
+          channelBinding.binding,
+        );
+    }
   });
 
   client.on('messageCreate', (message) => {
@@ -687,6 +716,12 @@ if (DISCORD_PLUGIN_ENABLED) {
       !config.allowedChannelIds.includes(message.channel.id)
     )
       return;
+
+    const channelBinding = getChannelBinding(message.channel.id);
+    if (channelBinding.error) {
+      message.reply(channelBinding.error).catch(() => {});
+      return;
+    }
 
     let content = message.content;
     let shouldTrackForDelete = !config.triggerPrefix;
@@ -709,6 +744,7 @@ if (DISCORD_PLUGIN_ENABLED) {
         command,
         cappedArgs,
         message.author.id,
+        channelBinding.binding,
       );
       return;
     }
@@ -719,7 +755,9 @@ if (DISCORD_PLUGIN_ENABLED) {
       return;
     }
 
-    const conversationId = resolveConversationId('discord', message.channel.id);
+    const conversationId = channelBinding.binding
+      ? boundConversationId(message.channel.id)
+      : resolveConversationId('discord', message.channel.id);
     addRoute(conversationId, 'discord', message.channel.id);
     const mappedPersona = getPersonaForUser('discord', message.author.id);
     const userLocale = getLangForUser('discord', message.author.id) || null;
@@ -732,6 +770,7 @@ if (DISCORD_PLUGIN_ENABLED) {
         platform: 'discord',
         ...(mappedPersona ? { mappedPersona } : {}),
         ...(userLocale ? { userLocale } : {}),
+        ...(channelBinding.binding ? { binding: channelBinding.binding } : {}),
       }),
     );
     // Track user prompts too so /delete N can mirror full ST deletions on
@@ -741,7 +780,7 @@ if (DISCORD_PLUGIN_ENABLED) {
     }
 
     // Cross-relay to other platforms in the same conversation.
-    if (!isCrossRelayEnabled()) return;
+    if (!isCrossRelayEnabled() || channelBinding.binding) return;
     const senderLabel = mappedPersona || getDefaultPersonaName() || `[discord]`;
     const relayText = `${senderLabel}: ${content}`;
     const originKey = `discord:${message.channel.id}`;

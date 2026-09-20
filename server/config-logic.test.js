@@ -203,3 +203,43 @@ test("createConfig accepts plugin-first config without discord token", () => {
 
   assert.deepEqual(config.enabledPlugins, ["telegram"]);
 });
+
+test("createConfig accepts arbitrary fixed Discord bindings", () => {
+  const { config } = createConfig({
+    discordToken: "token",
+    discordChannelBindings: {
+      "1001": { characterId: "char-a", chatName: "chat-a" },
+      "1002": { characterId: "char-a", chatName: "chat-b" },
+      "1003": { characterId: "char-b", chatName: "chat-c" },
+    },
+  });
+
+  assert.deepEqual(config.discordChannelBindings["1003"], {
+    characterId: "char-b",
+    chatName: "chat-c",
+  });
+});
+
+test("createConfig rejects malformed and duplicate fixed Discord bindings", () => {
+  assert.throws(
+    () =>
+      createConfig({
+        discordToken: "token",
+        discordChannelBindings: {
+          "1001": { characterId: "char-a" },
+        },
+      }),
+    /chatName/,
+  );
+  assert.throws(
+    () =>
+      createConfig({
+        discordToken: "token",
+        discordChannelBindings: {
+          "1001": { characterId: "char-a", chatName: "chat-a" },
+          "1002": { characterId: "char-a", chatName: "chat-a.jsonl" },
+        },
+      }),
+    /duplicate character\/chat target/i,
+  );
+});
